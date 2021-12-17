@@ -30,8 +30,6 @@ try {
     $mysql = false;
 }
 
-use \Piwik\Plugins\CustomJsTracker\TrackerUpdater;
-use \Piwik\Plugins\CustomJsTracker\TrackingCode\JsTestPluginTrackerFiles;
 
 $targetFileName = '/tests/resources/matomo.test.js';
 $sourceFile = PIWIK_DOCUMENT_ROOT . TrackerUpdater::DEVELOPMENT_PIWIK_JS;

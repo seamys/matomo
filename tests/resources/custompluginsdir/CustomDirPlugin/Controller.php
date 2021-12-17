@@ -8,7 +8,6 @@
 
 namespace Piwik\Plugins\CustomDirPlugin;
 
-use Piwik\Config;
 use Piwik\Container\StaticContainer;
 
 class Controller extends \Piwik\Plugin\Controller

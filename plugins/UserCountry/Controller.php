@@ -14,9 +14,7 @@ use Piwik\IP;
 use Piwik\Notification;
 use Piwik\Piwik;
 use Piwik\Plugin\Manager;
-use Piwik\Plugins\GeoIp2\LocationProvider\GeoIp2;
 use Piwik\Plugins\UserCountry\LocationProvider\DefaultProvider;
-use Piwik\SettingsPiwik;
 use Piwik\View;
 
 /**

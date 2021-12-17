@@ -8,8 +8,6 @@
 
 namespace Piwik\Plugins\CustomDirPlugin;
 
-use Piwik\Common;
-use Piwik\Db;
 
 class CustomDirPlugin extends \Piwik\Plugin
 {
