@@ -104,7 +104,8 @@ class CoreHome extends \Piwik\Plugin
                 if ($metric->getDbTableName() === 'log_visit'
                     && $metricName !== 'nb_uniq_visitors'
                     && $metricName !== 'nb_visits'
-                    && strpos($metricName, ArchivedMetric::AGGREGATION_SUM_PREFIX) === 0) {
+                    && strpos($metricName, ArchivedMetric::AGGREGATION_SUM_PREFIX) === 0
+                ) {
                     $metric = $computedMetricFactory->createComputedMetric($metric->getName(), 'nb_visits', ComputedMetric::AGGREGATION_AVG);
                     $list->addMetric($metric);
                 }
@@ -346,6 +347,7 @@ class CoreHome extends \Piwik\Plugin
         $translationKeys[] = 'General_LoadingData';
         $translationKeys[] = 'General_Error';
         $translationKeys[] = 'General_ErrorRequest';
+        $translationKeys[] = 'General_ErrorRateLimit';
         $translationKeys[] = 'General_ErrorRequestFaqLink';
         $translationKeys[] = 'General_Warning';
         $translationKeys[] = 'General_YourChangesHaveBeenSaved';
@@ -379,6 +381,7 @@ class CoreHome extends \Piwik\Plugin
         $translationKeys[] = 'CoreHome_ShortcutCalendar';
         $translationKeys[] = 'CoreHome_ShortcutSearch';
         $translationKeys[] = 'CoreHome_ShortcutHelp';
+        $translationKeys[] = 'CoreHome_ShortcutRefresh';
         $translationKeys[] = 'CoreHome_StandardReport';
         $translationKeys[] = 'CoreHome_ReportWithMetadata';
         $translationKeys[] = 'CoreHome_ReportType';

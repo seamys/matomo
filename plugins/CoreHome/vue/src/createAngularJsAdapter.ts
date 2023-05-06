@@ -28,6 +28,7 @@ interface SingleScopeVarInfo<InjectTypes extends unknown[]> {
     ...injected: InjectTypes
   ) => unknown;
   angularJsBind?: string;
+  deepWatch?: boolean;
 }
 
 type ScopeMapping<InjectTypes extends unknown[]> = {
@@ -164,8 +165,8 @@ export default function createAngularJsAdapter<InjectTypes extends unknown[] = [
             Object.entries(scope).forEach(([, info]) => {
               if (info.angularJsBind === '&' || info.angularJsBind === '&?') {
                 const eventName = toKebabCase(info.vue!);
-                if (!events[eventName]) { // pass through scope & w/o a custom event handler
-                  rootVueTemplate += ` @${eventName}="onEventHandler('${eventName}', $event)"`;
+                if (!events[info.vue!]) { // pass through scope & w/o a custom event handler
+                  rootVueTemplate += ` @${eventName}="onEventHandler('${info.vue!}', $event)"`;
                 }
               } else {
                 rootVueTemplate += ` :${toKebabCase(info.vue!)}="${info.vue}"`;
@@ -250,7 +251,13 @@ export default function createAngularJsAdapter<InjectTypes extends unknown[] = [
                 return;
               }
 
-              ngScope.$watch(scopeVarName, (newValue: any) => {
+              ngScope.$watch(scopeVarName, (newValue: any, oldValue: any) => {
+                if (newValue === oldValue
+                  && JSON.stringify(vm[info.vue!]) === JSON.stringify(newValue)
+                ) {
+                  return; // initial
+                }
+
                 let newValueFinal = removeAngularJsSpecificProperties(newValue);
                 if (typeof info.default !== 'undefined' && typeof newValue === 'undefined') {
                   newValueFinal = info.default instanceof Function
@@ -268,8 +275,9 @@ export default function createAngularJsAdapter<InjectTypes extends unknown[] = [
                     ...injectedServices,
                   );
                 }
+
                 vm[info.vue!] = newValueFinal;
-              });
+              }, info.deepWatch);
             });
 
             if (transclude && transcludeClone) {

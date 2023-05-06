@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Matomo - free/libre analytics platform
  *
@@ -6,27 +7,21 @@
  * @license http://www.gnu.org/licenses/gpl-3.0.html GPL v3 or later
  *
  */
+
 namespace Piwik\Plugins\SitesManager;
 
 use Exception;
 use Piwik\API\Request;
 use Piwik\API\ResponseBuilder;
 use Piwik\Common;
-use Piwik\Container\StaticContainer;
-use Piwik\Exception\UnexpectedWebsiteFoundException;
 use Piwik\Piwik;
 use Piwik\Plugin\Manager;
+use Piwik\SiteContentDetector;
 use Piwik\Session;
-use Piwik\Settings\Measurable\MeasurableSettings;
 use Piwik\SettingsPiwik;
-use Piwik\Site;
 use Piwik\Tracker\TrackerCodeGenerator;
 use Piwik\Url;
-use Piwik\View;
-use Piwik\Http;
-use Piwik\Plugins\SitesManager\GtmSiteTypeGuesser;
 use Matomo\Cache\Lazy;
-use Psr\Log\LoggerInterface;
 
 /**
  *
@@ -36,8 +31,13 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
     /** @var Lazy */
     private $cache;
 
-    public function __construct(Lazy $cache) {
+    /** @var SiteContentDetector */
+    private $siteContentDetector;
+
+    public function __construct(Lazy $cache, SiteContentDetector $siteContentDetector)
+    {
         $this->cache = $cache;
+        $this->siteContentDetector = $siteContentDetector;
 
         parent::__construct();
     }
@@ -66,7 +66,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
 
         $response = new ResponseBuilder(Common::getRequestVar('format'));
 
-        $globalSettings = array();
+        $globalSettings = [];
         $globalSettings['keepURLFragmentsGlobal'] = API::getInstance()->getKeepURLFragmentsGlobal();
         $globalSettings['defaultCurrency'] = API::getInstance()->getDefaultCurrency();
         $globalSettings['searchKeywordParametersGlobal'] = API::getInstance()->getSearchKeywordParametersGlobal();
@@ -75,6 +75,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
         $globalSettings['excludedIpsGlobal'] = API::getInstance()->getExcludedIpsGlobal();
         $globalSettings['excludedQueryParametersGlobal'] = API::getInstance()->getExcludedQueryParametersGlobal();
         $globalSettings['excludedUserAgentsGlobal'] = API::getInstance()->getExcludedUserAgentsGlobal();
+        $globalSettings['excludedReferrersGlobal'] = API::getInstance()->getExcludedReferrersGlobal();
 
         return $response->getResponse($globalSettings);
     }
@@ -92,6 +93,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
             $excludedIps = Common::getRequestVar('excludedIps', false);
             $excludedQueryParameters = Common::getRequestVar('excludedQueryParameters', false);
             $excludedUserAgents = Common::getRequestVar('excludedUserAgents', false);
+            $excludedReferrers = Common::getRequestVar('excludedReferrers', false);
             $currency = Common::getRequestVar('currency', false);
             $searchKeywordParameters = Common::getRequestVar('searchKeywordParameters', $default = "");
             $searchCategoryParameters = Common::getRequestVar('searchCategoryParameters', $default = "");
@@ -103,6 +105,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
             $api->setGlobalExcludedQueryParameters($excludedQueryParameters);
             $api->setGlobalExcludedIps($excludedIps);
             $api->setGlobalExcludedUserAgents($excludedUserAgents);
+            $api->setGlobalExcludedReferrers($excludedReferrers);
             $api->setGlobalSearchParameters($searchKeywordParameters, $searchCategoryParameters);
             $api->setKeepURLFragmentsGlobal($keepURLFragments);
 
@@ -134,7 +137,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
         $javascriptGenerator->forceMatomoEndpoint();
         $piwikUrl = Url::getCurrentUrlWithoutFileName();
 
-        $jsTag = Request::processRequest('SitesManager.getJavascriptTag', array('idSite' => $this->idSite, 'piwikUrl' => $piwikUrl));
+        $jsTag = Request::processRequest('SitesManager.getJavascriptTag', ['idSite' => $this->idSite, 'piwikUrl' => $piwikUrl]);
 
         // Strip off open and close <script> tag and comments so that JS will be displayed in ALL mail clients
         $rawJsTag = TrackerCodeGenerator::stripTags($jsTag);
@@ -143,70 +146,57 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
         /**
          * @ignore
          */
-        Piwik::postEvent('SitesManager.showMatomoLinksInTrackingCodeEmail', array(&$showMatomoLinks));
+        Piwik::postEvent('SitesManager.showMatomoLinksInTrackingCodeEmail', [&$showMatomoLinks]);
 
         $trackerCodeGenerator = new TrackerCodeGenerator();
         $trackingUrl = trim(SettingsPiwik::getPiwikUrl(), '/') . '/' . $trackerCodeGenerator->getPhpTrackerEndpoint();
 
-        $emailContent = $this->renderTemplateAs('@SitesManager/_trackingCodeEmail', array(
+        $emailTemplateData = [
             'jsTag' => $rawJsTag,
             'showMatomoLinks' => $showMatomoLinks,
             'trackingUrl' => $trackingUrl,
-            'idSite' => $this->idSite
-        ), $viewType = 'basic');
+            'idSite' => $this->idSite,
+            'consentManagerName' => false,
+            'cloudflare' => false,
+            'ga3Used' => false,
+            'ga4Used' => false,
+            'gtmUsed' => false,
+            'cms' => false
+        ];
 
-        return $this->renderTemplateAs('siteWithoutData', array(
-            'siteName'      => $this->site->getName(),
-            'idSite'        => $this->idSite,
-            'piwikUrl'      => $piwikUrl,
-            'emailBody'     => $emailContent,
-        ), $viewType = 'basic');
+        $this->siteContentDetector->detectContent([SiteContentDetector::ALL_CONTENT]);
+        if ($this->siteContentDetector->consentManagerId) {
+            $emailTemplateData['consentManagerName'] = $this->siteContentDetector->consentManagerName;
+            $emailTemplateData['consentManagerUrl'] = $this->siteContentDetector->consentManagerUrl;
+        }
+        $emailTemplateData['ga3Used'] = $this->siteContentDetector->ga3;
+        $emailTemplateData['ga4Used'] = $this->siteContentDetector->ga4;
+        $emailTemplateData['gtmUsed'] = $this->siteContentDetector->gtm;
+        $emailTemplateData['cloudflare'] = $this->siteContentDetector->cloudflare;
+        $emailTemplateData['cms'] = $this->siteContentDetector->cms;
+
+        $emailContent = $this->renderTemplateAs('@SitesManager/_trackingCodeEmail', $emailTemplateData, $viewType = 'basic');
+
+        return $this->renderTemplateAs('siteWithoutData', [
+            'siteName'           => $this->site->getName(),
+            'idSite'             => $this->idSite,
+            'piwikUrl'           => $piwikUrl,
+            'emailBody'          => $emailContent,
+        ], $viewType = 'basic');
     }
 
-    public function siteWithoutDataTabs() {
+    public function siteWithoutDataTabs()
+    {
         $this->checkSitePermission();
 
-        $mainUrl = $this->site->getMainUrl();
-        $typeCacheId = 'guessedtype_' . md5($mainUrl);
-        $gtmCacheId = 'guessedgtm_' . md5($mainUrl);
-
-        $siteType = $this->cache->fetch($typeCacheId);
-        $gtmUsed = $this->cache->fetch($gtmCacheId);
-
-        if (!$siteType) {
-            try {
-                $response = false;
-                $parsedUrl = parse_url($mainUrl);
-
-                // do not try to determine the site type for localhost or any IP
-                if (!empty($parsedUrl['host']) && !Url::isLocalHost($parsedUrl['host']) && !filter_var($parsedUrl['host'], FILTER_VALIDATE_IP)) {
-                    $response = Http::sendHttpRequest($mainUrl, 5, null, null, 0, false, false, true);
-                }
-            } catch (Exception $e) {
-                StaticContainer::get(LoggerInterface::class)->info('Unable to fetch site type for host "{host}": {exception}', [
-                    'host' => $parsedUrl['host'] ?? 'unknown',
-                    'exception' => $e,
-                ]);
-            }
-
-            $guesser = new GtmSiteTypeGuesser();
-            $siteType = $guesser->guessSiteTypeFromResponse($response);
-            $gtmUsed = $guesser->guessGtmFromResponse($response);
-
-            $this->cache->save($typeCacheId, $siteType, 60 * 60 * 24);
-            $this->cache->save($gtmCacheId, $gtmUsed, 60 * 60 * 24);
-        }
-
-        $instructionUrl = SitesManager::getInstructionUrlBySiteType($siteType);
-
         $piwikUrl = Url::getCurrentUrlWithoutFileName();
-        $jsTag = Request::processRequest('SitesManager.getJavascriptTag', array('idSite' => $this->idSite, 'piwikUrl' => $piwikUrl));
+        $jsTag = Request::processRequest('SitesManager.getJavascriptTag', ['idSite' => $this->idSite, 'piwikUrl' => $piwikUrl]);
 
         $showMatomoLinks = true;
         /**
          * @ignore
          */
-        Piwik::postEvent('SitesManager.showMatomoLinksInTrackingCodeEmail', array(&$showMatomoLinks));
+        Piwik::postEvent('SitesManager.showMatomoLinksInTrackingCodeEmail', [&$showMatomoLinks]);
 
         $googleAnalyticsImporterMessage = '';
         if (Manager::getInstance()->isPluginLoaded('GoogleAnalyticsImporter')) {
@@ -224,18 +214,49 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
         if (Manager::getInstance()->isPluginActivated('TagManager')) {
             $tagManagerActive = true;
         }
+        $this->siteContentDetector->detectContent([SiteContentDetector::ALL_CONTENT], $this->idSite);
 
-        return $this->renderTemplateAs('_siteWithoutDataTabs', array(
+        $templateData = [
             'siteName'      => $this->site->getName(),
             'idSite'        => $this->idSite,
             'jsTag'         => $jsTag,
             'piwikUrl'      => $piwikUrl,
             'showMatomoLinks' => $showMatomoLinks,
-            'siteType' => $siteType,
-            'instructionUrl' => $instructionUrl,
-            'gtmUsed' => $gtmUsed,
+            'siteType' => $this->siteContentDetector->cms,
+            'instruction' => SitesManager::getInstructionByCms($this->siteContentDetector->cms),
+            'gtmUsed' => $this->siteContentDetector->gtm,
+            'ga3Used' => $this->siteContentDetector->ga3,
+            'ga4Used' => $this->siteContentDetector->ga4,
             'googleAnalyticsImporterMessage' => $googleAnalyticsImporterMessage,
             'tagManagerActive' => $tagManagerActive,
-        ), $viewType = 'basic');
+            'consentManagerName' => false,
+            'cloudflare' => $this->siteContentDetector->cloudflare,
+            'cms' => $this->siteContentDetector->cms,
+        ];
+
+        if ($this->siteContentDetector->consentManagerId) {
+            $templateData['consentManagerName'] = $this->siteContentDetector->consentManagerName;
+            $templateData['consentManagerUrl'] = $this->siteContentDetector->consentManagerUrl;
+            $templateData['consentManagerIsConnected'] = $this->siteContentDetector->isConnected;
+        }
+
+        $templateData['activeTab'] = $this->getActiveTabOnLoad($templateData);
+
+        return $this->renderTemplateAs('_siteWithoutDataTabs', $templateData, $viewType = 'basic');
+    }
+
+    private function getActiveTabOnLoad($templateData)
+    {
+        $tabToDisplay = '';
+
+        if (!empty($templateData['gtmUsed'])) {
+            $tabToDisplay = 'gtm';
+        } else if (!empty($templateData['cms']) && $templateData['cms'] === SitesManager::SITE_TYPE_WORDPRESS) {
+            $tabToDisplay = 'wordpress';
+        } else if (!empty($templateData['cloudflare'])) {
+            $tabToDisplay = 'cloudflare';
+        }
+
+        return $tabToDisplay;
     }
 }

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Matomo - free/libre analytics platform
  *
@@ -20,7 +21,7 @@ final class Version
      * The current Matomo version.
      * @var string
      */
-    const VERSION = '4.7.0-rc1';
+    const VERSION = '4.14.3-b2';
 
     const MAJOR_VERSION = 4;
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <result>
 	<website>Site 1</website>
-	<prettyDate>January 3 – 9, 2010</prettyDate>
+	<prettyDate>January 3 – 9, 2010</prettyDate>
 	<metadata>
 		<category>Goals</category>
 		<name>Days to Conversion</name>
@@ -13,6 +13,9 @@
 		<metrics>
 			<nb_conversions>Conversions</nb_conversions>
 		</metrics>
+		<metricTypes>
+			<nb_conversions>number</nb_conversions>
+		</metricTypes>
 		<constantRowsCount>1</constantRowsCount>
 		<metricsGoal>
 			<nb_conversions>Conversions</nb_conversions>

@@ -23,7 +23,6 @@ use Piwik\Metrics;
 use Piwik\Metrics\Formatter;
 use Piwik\Period;
 use Piwik\Piwik;
-use Piwik\Plugin\Metric;
 use Piwik\Plugin\ReportsProvider;
 use Piwik\Site;
 use Piwik\Timer;
@@ -256,6 +255,9 @@ class ProcessedReport
             if (isset($availableReport['metricsDocumentation'])) {
                 $availableReport['metricsDocumentation'] =
                     $this->hideShowMetricsWithParams($availableReport['metricsDocumentation'], $columnsToRemove, $columnsToKeep);
+            }
+            if (isset($availableReport['metricTypes'])) {
+                $availableReport['metricTypes'] = $this->hideShowMetricsWithParams($availableReport['metricTypes'], $columnsToRemove, $columnsToKeep);
             }
 
             // Remove array elements that are false (to clean up API output)

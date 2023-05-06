@@ -14,12 +14,12 @@
         {{ translate('CoreAdminHome_JSTrackingIntro1') }}
         <br/><br/>
         {{ translate('CoreAdminHome_JSTrackingIntro2') }}
-        <span v-html="jsTrackingIntro3a"></span>
-        <span v-html="' ' + jsTrackingIntro3b"></span>
+        <span v-html="$sanitize(jsTrackingIntro3a)"></span>
+        <span v-html="$sanitize(' ' + jsTrackingIntro3b)"></span>
         <br/><br/>
-        <span v-html="jsTrackingIntro4a"></span>
+        <span v-html="$sanitize(jsTrackingIntro4a)"></span>
         <br/><br/>
-        <span v-html="jsTrackingIntro5"></span>
+        <span v-html="$sanitize(jsTrackingIntro5)"></span>
         <br><br/>
         {{ translate('SitesManager_InstallationGuides') }} :
         <a href="https://matomo.org/faq/new-to-piwik/how-do-i-install-the-matomo-tracking-code-on-wordpress/"
@@ -55,10 +55,11 @@
               {{ translate('CoreAdminHome_JSTracking_CodeNoteBeforeClosingHead', "&lt;/head&gt;") }}
             </p>
           </div>
-
+        <div id="javascript-email-button">
           <button class="btn" id="emailJsBtn" @click="sendEmail()">
             {{ translate('SitesManager_EmailInstructionsButton') }}
           </button>
+        </div>
         </div>
         <div id="javascript-text">
           <pre v-select-on-focus="{}" class="codeblock" v-text="trackingCode" ref="trackingCode"/>
@@ -68,8 +69,8 @@
       <div id="optional-js-tracking-options">
         <!-- track across all subdomains -->
         <div id="jsTrackAllSubdomainsInlineHelp" class="inline-help-node">
-          <span v-html="mergeSubdomainsDesc"></span>
-          <span v-html="learnMoreText"></span>
+          <span v-html="$sanitize(mergeSubdomainsDesc)"></span>
+          <span v-html="$sanitize(learnMoreText)"></span>
         </div>
 
         <Field
@@ -233,7 +234,7 @@
       <!-- custom campaign name/keyword query params -->
       <div id="jsTrackCampaignParamsInlineHelp"
            class="inline-help-node"
-           v-html="jsTrackCampaignParamsInlineHelp">
+           v-html="$sanitize(jsTrackCampaignParamsInlineHelp)">
       </div>
 
       <Field
@@ -304,6 +305,7 @@ interface JsTrackingCodeGeneratorState {
   isLoading: boolean;
   siteUrls: Record<string, string[]>;
   siteExcludedQueryParams: Record<string, string[]>,
+  siteExcludedReferrers: Record<string, string[]>,
   crossDomain: boolean;
   groupByDomain: boolean;
   trackAllAliases: boolean;
@@ -318,6 +320,9 @@ interface JsTrackingCodeGeneratorState {
   customCampaignKeyword: string;
   trackingCodeAbortController: AbortController|null;
   isHighlighting: boolean;
+  consentManagerName: string;
+  consentManagerUrl: string;
+  consentManagerIsConnected: boolean;
 }
 
 interface GetJavascriptTagResponse {
@@ -356,6 +361,7 @@ export default defineComponent({
       isLoading: false,
       siteUrls: {},
       siteExcludedQueryParams: {},
+      siteExcludedReferrers: {},
       crossDomain: false,
       groupByDomain: false,
       trackAllAliases: false,
@@ -370,6 +376,9 @@ export default defineComponent({
       customCampaignKeyword: '',
       trackingCodeAbortController: null,
       isHighlighting: false,
+      consentManagerName: '',
+      consentManagerUrl: '',
+      consentManagerIsConnected: false,
     };
   },
   components: {
@@ -405,6 +414,26 @@ export default defineComponent({
         this.isLoading = true;
 
         promises.push(
+          AjaxHelper.fetch(
+            {
+              module: 'API',
+              format: 'json',
+              method: 'Tour.detectConsentManager',
+              idSite,
+              filter_limit: '-1',
+            },
+          ).then((response) => {
+            if (Object.prototype.hasOwnProperty.call(response, 'name')) {
+              this.consentManagerName = response.name;
+            }
+            if (Object.prototype.hasOwnProperty.call(response, 'url')) {
+              this.consentManagerUrl = response.url;
+            }
+            this.consentManagerIsConnected = response.isConnected;
+          }),
+        );
+
+        promises.push(
           AjaxHelper.fetch({
             module: 'API',
             method: 'SitesManager.getSiteUrlsFromId',
@@ -431,6 +460,24 @@ export default defineComponent({
         );
       }
 
+      if (!this.siteExcludedReferrers[idSite]) {
+        this.isLoading = true;
+
+        promises.push(
+          AjaxHelper.fetch({
+            module: 'API',
+            method: 'SitesManager.getExcludedReferrers',
+            idSite,
+            filter_limit: '-1',
+          }).then((data) => {
+            this.siteExcludedReferrers[idSite] = [];
+            Object.values(data || []).forEach((referrer: unknown) => {
+              this.siteExcludedReferrers[idSite].push((referrer as string).replace(/^https?:\/\//, ''));
+            });
+          }),
+        );
+      }
+
       Promise.all(promises).then(() => {
         this.isLoading = false;
         this.updateCurrentSiteInfo();
@@ -448,6 +495,14 @@ export default defineComponent({
         'CoreAdminHome_JSTracking_CodeNoteBeforeClosingHeadEmail',
         '\'head',
       )}\n${trackingCode}`;
+
+      if (this.consentManagerName !== '' && this.consentManagerUrl !== '') {
+        bodyText += translate('CoreAdminHome_JSTracking_ConsentManagerDetected', this.consentManagerName,
+          this.consentManagerUrl);
+        if (this.consentManagerIsConnected) {
+          bodyText += `\n${translate('CoreAdminHome_JSTracking_ConsentManagerConnected', this.consentManagerName)}`;
+        }
+      }
       bodyText = encodeURIComponent(bodyText);
 
       const linkText = `mailto:?subject=${subjectLine}&body=${bodyText}`;
@@ -479,6 +534,10 @@ export default defineComponent({
 
       if (this.siteExcludedQueryParams[site.id]) {
         params.excludedQueryParams = this.siteExcludedQueryParams[site.id];
+      }
+
+      if (this.siteExcludedReferrers[site.id]) {
+        params.excludedReferrers = this.siteExcludedReferrers[site.id];
       }
 
       if (this.useCustomCampaignParams) {
@@ -612,7 +671,7 @@ export default defineComponent({
     jsTrackCampaignParamsInlineHelp() {
       return translate(
         'CoreAdminHome_JSTracking_CustomCampaignQueryParamDesc',
-        '<a href="https://matomo.org/faq/general/#faq_119" rel="noreferrer noopener" target="_blank">',
+        '<a href="https://matomo.org/faq/general/faq_119" rel="noreferrer noopener" target="_blank">',
         '</a>',
       );
     },

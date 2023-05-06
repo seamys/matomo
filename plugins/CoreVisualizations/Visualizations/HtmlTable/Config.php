@@ -9,7 +9,6 @@
 
 namespace Piwik\Plugins\CoreVisualizations\Visualizations\HtmlTable;
 
-use Piwik\Columns\Dimension;
 use Piwik\ViewDataTable\Config as VisualizationConfig;
 
 /**
@@ -55,6 +54,15 @@ class Config extends VisualizationConfig
      * Default value: false
      */
     public $disable_row_evolution = false;
+
+    /**
+     * Controls whether the summary row is displayed on every page of the datatable view or not.
+     * If false, the summary row will be treated as the last row of the dataset and will only visible
+     * when viewing the last rows.
+     *
+     * Default value: false
+     */
+    public $keep_summary_row = false;
 
     /**
      * If true, the 'label', 'nb_visits', 'nb_uniq_visitors' (if present), 'nb_actions',
